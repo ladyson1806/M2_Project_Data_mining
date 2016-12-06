@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 #-*- coding:utf-8 -*-
 from __future__ import division
+from matplotlib import pyplot as plt
+from scipy.cluster.hierarchy import dendrogram, linkage
+import numpy as np
 import sys
 import math
 
@@ -12,7 +15,7 @@ def loadfile(protein_list):
     try:
         f = open(sys.argv[1], 'r')
     except:
-        print "Le fichier ", sys.argv[1], " est introuvable"
+        print ("Le fichier ", sys.argv[1], " est introuvable")
         sys.exit()
         
     allLines = [x.strip() for x in f.readlines()]
@@ -51,35 +54,53 @@ def formatOntoData(protein_list):
         protein["Mass"] = float(protein["Mass"].replace(",", ""))
         protein["Length"] = float(protein["Length"].replace(",", ""))
 
+def geneOntoAsList(protein_list, gene_ontology):
+    """ 
+    For every protein, get the list of a particular GO, and its entry ID.
+    """
+    go_list = []
+    entry_list = []
+    for protein in protein_list:
+        go_list.append(protein[gene_ontology])
+        entry_list.append(protein["Entry"])
+    return go_list, entry_list
+        
 
-def calcDistance(protein1, protein2, gene_ontology):
+def calcDistance(protein1, protein2):
     """
     A function to calculate the distance between two proteins considering a particular GO. 
     It calculates the number of shared GO (shared_nodes), and unique GO. 
     Operation:
     1 - (number of shared nodes) / (number of shared nodes + number of unique nodes)
     """
-    shared_nodes = []
-    unique_nodes = []
-    for GO in protein1[gene_ontology]:
-        if GO in protein2[gene_ontology]:
-            shared_nodes.append(GO)
-        else:
-            unique_nodes.append(GO)
+    shared_nodes = 0
+    unique_nodes = 0
+    if len(protein1) >= len(protein2):
+        for go in protein1:
+            if go in protein2:
+                shared_nodes+=1
+            else:
+                unique_nodes+=1
+    else:
+        for go in protein2:
+            if go in protein1:
+                shared_nodes+=1
+            else:
+                unique_nodes+=1
     try:        
-        return round(1 - (len(shared_nodes) / (len(shared_nodes) + len(unique_nodes))), 3)
+        return round(1 - (shared_nodes / (shared_nodes + unique_nodes)), 3)
     except (ZeroDivisionError):
-        return 1
+        return 0
     
-def generateDistanceMatrix(protein_list, gene_ontology):
+def generateDistanceMatrix(protein_list):
     """
-    A function to calculate a distance matrix between proteins considering a particular GO.
+    A function to calculate a distance matrix between proteins.
     """
     distance_matrix = []
     for protein in protein_list:
         distance_list = []
         for protein_checked in protein_list:
-            distance_list.append(calcDistance(protein, protein_checked, gene_ontology))
+            distance_list.append(calcDistance(protein, protein_checked))
         distance_matrix.append(distance_list)
     return distance_matrix
             
@@ -88,7 +109,22 @@ def generateDistanceMatrix(protein_list, gene_ontology):
 protein_list = []
 protein_list = loadfile(protein_list)
 formatOntoData(protein_list)
-print generateDistanceMatrix(protein_list[0:5000], "Gene ontology (cellular component)")
+go_list_mol, entry_list = geneOntoAsList(protein_list[:200], "Gene ontology (molecular function)")
+distance_matrix = generateDistanceMatrix(go_list_mol)
+
+Z = linkage(distance_matrix, 'ward')
+
+plt.figure(figsize=(25, 10))
+plt.title('Hierarchical Clustering Dendrogram')
+plt.xlabel('samples')
+plt.ylabel('distance')
+dendrogram(
+    Z,
+    labels=entry_list,
+    leaf_rotation=90.,  # rotates the x axis labels
+    leaf_font_size=8.,  # font size for the x axis labels
+)
+plt.show()
 
 
 
