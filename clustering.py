@@ -3,6 +3,9 @@
 from __future__ import division
 from matplotlib import pyplot as plt
 from scipy.cluster.hierarchy import dendrogram, linkage
+import scipy.spatial.distance as ssd
+from scipy.cluster.hierarchy import cophenet
+from scipy.spatial.distance import pdist
 import numpy as np
 import sys
 import math
@@ -60,7 +63,7 @@ def formatOntoData(protein_list):
         protein["Mass"] = float(protein["Mass"].replace(",", ""))
         protein["Length"] = float(protein["Length"].replace(",", ""))
 
-def geneOntoAsList(protein_list, gene_ontology):
+def geneOntoAsList(protein_list, gene_ontology="Gene ontology (molecular function)"):
     """ 
     For every protein, get the list of a particular GO, and its entry ID.
     """
@@ -68,7 +71,7 @@ def geneOntoAsList(protein_list, gene_ontology):
     entry_list = []
     for protein in protein_list:
         go_list.append(protein[gene_ontology])
-        entry_list.append(protein["Protein names"])
+        entry_list.append(protein["Entry"])
     return go_list, entry_list
         
 
@@ -103,44 +106,75 @@ def generateDistanceMatrix(protein_list):
     A function to calculate a distance matrix between proteins.
     """
     distance_matrix = []
+    i=0
     for protein in protein_list:
         distance_list = []
         for protein_checked in protein_list:
             distance_list.append(calcDistance(protein, protein_checked))
         distance_matrix.append(distance_list)
+        i+=1
+        print i
     return distance_matrix
+
+def dummyData(protein_list):
+    dico = {}
+    i = 0
+    for GOlist in protein_list:
+        for GO in GOlist:
+            if not GO.strip(" ") in dico.keys():
+                dico[GO.strip(" ")] = i
+                i+=1
+    for GOlist in protein_list:
+        for i in range(len(GOlist)):
+            GOlist[i] = GOlist[i].strip(" ")
+            GOlist[i] = dico[GOlist[i]]
+    return protein_list
+        
+if __name__ == '__main__':
+    protein_list = []
+    protein_list = loadfile(protein_list)
+    formatOntoData(protein_list)
+    
+    go_list_mol, entry_list = geneOntoAsList(protein_list)
+    dico = dummyData(go_list_mol)
+    distance_matrix = generateDistanceMatrix(dico)
+    
+    
             
+    """
+    distArray = ssd.squareform(distance_matrix)
+    Z = linkage(distArray, 'ward')
+    #c, coph_dist = cophenet(Z, pdist(
+    
+    
+    db = DBSCAN(eps=0.5, min_samples=2, metric="precomputed").fit(distance_matrix)
+    
+    labels = db.labels_
+    n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
 
-protein_list = []
-protein_list = loadfile(protein_list)
-formatOntoData(protein_list)
 
-go_list_mol, entry_list = geneOntoAsList(protein_list, "Gene ontology (molecular function)")
-distance_matrix = generateDistanceMatrix(go_list_mol)
-
-
-db = DBSCAN(eps=0.5, min_samples=10, metric="precomputed").fit(distance_matrix)
-labels = db.labels_
-n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-print n_clusters_
-cluster = {}
-for nb in labels:
-    if not nb in cluster.keys(): 
-        cluster[nb] = []
-
-for i in range(len(labels)):
-    nb = labels[i]
-    cluster[nb].append(entry_list[i])
-
-f = open("results_mf.txt", 'w')
-for i in cluster.keys():
-    f.write("Cluster %s : " % i)
-    for entry in cluster[i]:
-       f.write(entry)
-       f.write("\n")
-    f.write("\n\n")
-f.close()
-     
+    cluster = {}
+    for nb in labels:
+        if not nb in cluster.keys(): 
+            cluster[nb] = []
+    for i in range(len(labels)):
+        nb = labels[i]
+        cluster[nb].append(entry_list[i])
+    
+    
+    plt.figure(figsize=(25, 10))
+    plt.title('Hierarchical Clustering Dendrogram')
+    plt.xlabel('sample index')
+    plt.ylabel('distance')
+    dendrogram(
+        Z,
+        leaf_rotation=90.,  # rotates the x axis labels
+        leaf_font_size=8.,  # font size for the x axis labels
+    )
+    plt.show()
+    """
+        
+    
 
 
 
