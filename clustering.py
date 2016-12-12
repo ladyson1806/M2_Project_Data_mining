@@ -40,16 +40,19 @@ def loadfile(protein_list):
         protein_list.append(protein)
     return protein_list[1:len(protein_list)] #Doesn't return the first line with keywords
 
-def formatOntoData(protein_list):
+def formatData(protein_list):
     """
     A function to add Gene ontology if it's missing from data (maybe it's a tab format problem)
     then format every GO for every protein as a list (Gene ontology is None if it's empty).
     It also makes sure that mass and length are in the correct format.
     """
+    entry_id = "Entry"
     onto = "Gene ontology (GO)"
     mass = "Mass"
     length = "Length"
+    new_protein_list = []
     for protein in protein_list:
+        new_formatted_protein = []
         if not protein.has_key(onto):
             protein[onto] = None
         if not protein.has_key(mass):
@@ -62,24 +65,18 @@ def formatOntoData(protein_list):
             protein["Mass"] = float(protein["Mass"].replace(",", ""))
         if not protein[length] is None:
             protein["Length"] = float(protein["Length"].replace(",", ""))
-
-def geneOntoAsList(protein_list):
-    """ 
-    For every protein, get the list of a particular GO, and its entry ID.
-    """
-    onto = "Gene ontology (GO)"
-    go_list = []
-    entry_list = []
-    for protein in protein_list:
-        go_list.append(protein[onto])
-        entry_list.append(protein["Entry"])
-    return go_list, entry_list
+        new_formatted_protein.append(protein[entry_id])
+        new_formatted_protein.append(protein[onto])
+        new_formatted_protein.append(protein[mass])
+        new_formatted_protein.append(protein[length])
+        new_protein_list.append(new_formatted_protein)
+    return new_protein_list
 
 def getMinMaxMass(protein_list):
     """
     Return the maximum and minimum mass of proteins in a protein list
     """
-    mass = "Mass"
+    mass = 2 #index of mass in a protein list
     massMax = 0
     massMin = 1000 #arbitrary choosen
     for protein in protein_list:
@@ -94,7 +91,7 @@ def getMinMaxLength(protein_list):
     """
     Return the maximum and minimum length of proteins in a protein list
     """
-    length = "Length"
+    length = 3 #index of length in a protein list
     lengthMax = 0
     lengthMin = 1000 #arbitrary choosen
     for protein in protein_list:
@@ -107,19 +104,21 @@ def getMinMaxLength(protein_list):
 
 
 def calcMassDistance(protein1, protein2, massMin, massMax):
+    mass = 2 #index of mass in a protein list
     delta = 0
     dist = 0
-    if not protein1["Mass"] is None and not protein2["Mass"] is None:
+    if not protein1[mass] is None and not protein2[mass] is None:
         delta = 1
-        dist = abs(protein1["Mass"] - protein2["Mass"]) / (massMax - massMin)
+        dist = abs(protein1[mass] - protein2[mass]) / (massMax - massMin)
     return delta, dist
 
 def calcLengthDistance(protein1, protein2, lengthMin, lengthMax):
+    length = 3 #index of length in a protein list
     delta = 0
     dist = 0
-    if not protein1["Length"] is None and not protein2["Length"] is None:
+    if not protein1[length] is None and not protein2[length] is None:
         delta = 1
-        dist = abs(protein1["Length"] - protein2["Length"]) / (lengthMax - lengthMin)
+        dist = abs(protein1[length] - protein2[length]) / (lengthMax - lengthMin)
     return delta, dist
         
 
@@ -130,21 +129,21 @@ def calcGODistance(protein1, protein2):
     Operation:
     1 - (number of shared nodes) / (number of shared nodes + number of unique nodes)
     """
-    onto = "Gene ontology (GO)"
+    GO = 1 #index of GO in a protein list
     delta = 0
     shared_nodes = 0
     unique_nodes = 0
-    if not protein1[onto] is None and not protein2[onto] is None:
+    if not protein1[GO] is None and not protein2[GO] is None:
         delta = 1
-        if len(protein1[onto]) >= len(protein2[onto]):
-            for go in protein1[onto]:
-                if go in protein2[onto]:
+        if len(protein1[GO]) >= len(protein2[GO]):
+            for go in protein1[GO]:
+                if go in protein2[GO]:
                     shared_nodes+=1
                 else:
                     unique_nodes+=1
         else:
-            for go in protein2[onto]:
-                if go in protein1[onto]:
+            for go in protein2[GO]:
+                if go in protein1[GO]:
                     shared_nodes+=1
                 else:
                     unique_nodes+=1
@@ -153,12 +152,13 @@ def calcGODistance(protein1, protein2):
         return delta, 0
 
 def calcDistance(protein1, protein2, massMin, massMax, lengthMin, lengthMax):
+    w = 2
     deltaMass, massDistance = calcMassDistance(protein1, protein2, massMin, massMax)
     deltaLength, lengthDistance = calcLengthDistance(protein1, protein2, lengthMin, lengthMax)
     deltaGO, GODistance = calcGODistance(protein1, protein2)
     try:
-        return round(((deltaMass*massDistance + deltaLength*lengthDistance + deltaGO*GODistance) /
-                      (deltaMass + deltaLength + deltaGO)), 3)
+        return round(((deltaMass*massDistance + deltaLength*lengthDistance + deltaGO*GODistance*w) /
+                      (deltaMass + deltaLength + deltaGO*w)), 3)
     except ZeroDivisionError:
         return 1
     
@@ -169,39 +169,26 @@ def generateDistanceMatrix(protein_list):
     massMin, massMax = getMinMaxMass(protein_list)
     lengthMin, lengthMax = getMinMaxLength(protein_list)
     distance_matrix = []
-    i=0
     for protein in protein_list:
         distance_list = []
         for protein_checked in protein_list:
-            distance_list.append(calcDistance(protein, protein_checked,
-                                              massMin, massMax, lengthMin, lengthMax))
-        i+=1
-        print i
+            if protein is protein_checked:
+                distance_list.append(0.0)
+            else:
+                distance_list.append(calcDistance(protein, protein_checked,
+                                                  massMin, massMax, lengthMin, lengthMax))
         distance_matrix.append(distance_list)
     return distance_matrix
-
 
 
 if __name__ == '__main__':
     protein_list = []
     protein_list = loadfile(protein_list)
-    formatOntoData(protein_list)
-    distance_matrix = generateDistanceMatrix(protein_list[0:10000])
+    protein_list = formatData(protein_list)
+    distance_matrix = generateDistanceMatrix(protein_list)
     
-    """
-    go_list_mol, entry_list = geneOntoAsList(protein_list[:5])
-
-    distance_matrix = generateDistanceMatrix(go_list_mol)
-    print distance_matrix
-    """
-            
-    """
-    distArray = ssd.squareform(distance_matrix)
-    Z = linkage(distArray, 'ward')
-    #c, coph_dist = cophenet(Z, pdist(
-    
-    
-    db = DBSCAN(eps=0.5, min_samples=2, metric="precomputed").fit(distance_matrix)
+    """   
+    db = DBSCAN(eps=0.5, min_samples=5, metric="precomputed").fit(distance_matrix)
     
     labels = db.labels_
     n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
@@ -213,20 +200,10 @@ if __name__ == '__main__':
             cluster[nb] = []
     for i in range(len(labels)):
         nb = labels[i]
-        cluster[nb].append(entry_list[i])
-    
-    
-    plt.figure(figsize=(25, 10))
-    plt.title('Hierarchical Clustering Dendrogram')
-    plt.xlabel('sample index')
-    plt.ylabel('distance')
-    dendrogram(
-        Z,
-        leaf_rotation=90.,  # rotates the x axis labels
-        leaf_font_size=8.,  # font size for the x axis labels
-    )
-    plt.show()
+        cluster[nb].append(protein_list[i][0])
+    print distance_matrix[0]
     """
+    
         
     
 
