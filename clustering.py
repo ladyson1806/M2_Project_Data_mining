@@ -14,8 +14,7 @@ from sklearn import metrics
 from sklearn.datasets.samples_generator import make_blobs
 from sklearn.preprocessing import StandardScaler
 import sklearn
-
-
+import pprint
 
 def loadfile(protein_list):
     """
@@ -44,102 +43,157 @@ def loadfile(protein_list):
 def formatOntoData(protein_list):
     """
     A function to add Gene ontology if it's missing from data (maybe it's a tab format problem)
-    then format every GO for every protein as a list. It also makes sure that mass and length
-    are in the correct format
+    then format every GO for every protein as a list (Gene ontology is None if it's empty).
+    It also makes sure that mass and length are in the correct format.
     """
-    onto_bp = "Gene ontology (biological process)"
-    onto_mf = "Gene ontology (molecular function)"
-    onto_cc = "Gene ontology (cellular component)"
+    onto = "Gene ontology (GO)"
+    mass = "Mass"
+    length = "Length"
     for protein in protein_list:
-        if not protein.has_key(onto_bp):
-            protein[onto_bp] = ""
-        if not protein.has_key(onto_mf):
-            protein[onto_mf] = ""
-        if not protein.has_key(onto_cc):
-            protein[onto_cc] = ""
-        protein[onto_bp] = protein[onto_bp].split(";")   
-        protein[onto_mf] = protein[onto_mf].split(";")
-        protein[onto_cc] = protein[onto_cc].split(";")
-        protein["Mass"] = float(protein["Mass"].replace(",", ""))
-        protein["Length"] = float(protein["Length"].replace(",", ""))
+        if not protein.has_key(onto):
+            protein[onto] = None
+        if not protein.has_key(mass):
+            protein[mass] = None
+        if not protein.has_key(length):
+            protein[length] = None
+        if not protein[onto] is None:
+            protein[onto] = protein[onto].split(";")
+        if not protein[mass] is None:
+            protein["Mass"] = float(protein["Mass"].replace(",", ""))
+        if not protein[length] is None:
+            protein["Length"] = float(protein["Length"].replace(",", ""))
 
-def geneOntoAsList(protein_list, gene_ontology="Gene ontology (molecular function)"):
+def geneOntoAsList(protein_list):
     """ 
     For every protein, get the list of a particular GO, and its entry ID.
     """
+    onto = "Gene ontology (GO)"
     go_list = []
     entry_list = []
     for protein in protein_list:
-        go_list.append(protein[gene_ontology])
+        go_list.append(protein[onto])
         entry_list.append(protein["Entry"])
     return go_list, entry_list
+
+def getMinMaxMass(protein_list):
+    """
+    Return the maximum and minimum mass of proteins in a protein list
+    """
+    mass = "Mass"
+    massMax = 0
+    massMin = 1000 #arbitrary choosen
+    for protein in protein_list:
+        if not protein[mass] is None:
+            if protein[mass] > massMax:
+                massMax = protein[mass]
+            if protein[mass] < massMin:
+                massMin = protein[mass]
+    return massMin, massMax
+
+def getMinMaxLength(protein_list):
+    """
+    Return the maximum and minimum length of proteins in a protein list
+    """
+    length = "Length"
+    lengthMax = 0
+    lengthMin = 1000 #arbitrary choosen
+    for protein in protein_list:
+        if not protein[length] is None:
+            if protein[length] > lengthMax:
+                lengthMax = protein[length]
+            if protein[length] < lengthMin:
+                lengthMin = protein[length]
+    return lengthMin, lengthMax
+
+
+def calcMassDistance(protein1, protein2, massMin, massMax):
+    delta = 0
+    dist = 0
+    if not protein1["Mass"] is None and not protein2["Mass"] is None:
+        delta = 1
+        dist = abs(protein1["Mass"] - protein2["Mass"]) / (massMax - massMin)
+    return delta, dist
+
+def calcLengthDistance(protein1, protein2, lengthMin, lengthMax):
+    delta = 0
+    dist = 0
+    if not protein1["Length"] is None and not protein2["Length"] is None:
+        delta = 1
+        dist = abs(protein1["Length"] - protein2["Length"]) / (lengthMax - lengthMin)
+    return delta, dist
         
 
-def calcDistance(protein1, protein2):
+def calcGODistance(protein1, protein2):
     """
     A function to calculate the distance between two proteins considering a particular GO. 
     It calculates the number of shared GO (shared_nodes), and unique GO. 
     Operation:
     1 - (number of shared nodes) / (number of shared nodes + number of unique nodes)
     """
+    onto = "Gene ontology (GO)"
+    delta = 0
     shared_nodes = 0
     unique_nodes = 0
-    if len(protein1) >= len(protein2):
-        for go in protein1:
-            if go in protein2:
-                shared_nodes+=1
-            else:
-                unique_nodes+=1
+    if not protein1[onto] is None and not protein2[onto] is None:
+        delta = 1
+        if len(protein1[onto]) >= len(protein2[onto]):
+            for go in protein1[onto]:
+                if go in protein2[onto]:
+                    shared_nodes+=1
+                else:
+                    unique_nodes+=1
+        else:
+            for go in protein2[onto]:
+                if go in protein1[onto]:
+                    shared_nodes+=1
+                else:
+                    unique_nodes+=1
+        return delta, round(1 - (shared_nodes / (shared_nodes + unique_nodes)), 3)
     else:
-        for go in protein2:
-            if go in protein1:
-                shared_nodes+=1
-            else:
-                unique_nodes+=1
-    try:        
-        return round(1 - (shared_nodes / (shared_nodes + unique_nodes)), 3)
-    except (ZeroDivisionError):
-        return 0
+        return delta, 0
+
+def calcDistance(protein1, protein2, massMin, massMax, lengthMin, lengthMax):
+    deltaMass, massDistance = calcMassDistance(protein1, protein2, massMin, massMax)
+    deltaLength, lengthDistance = calcLengthDistance(protein1, protein2, lengthMin, lengthMax)
+    deltaGO, GODistance = calcGODistance(protein1, protein2)
+    try:
+        return round(((deltaMass*massDistance + deltaLength*lengthDistance + deltaGO*GODistance) /
+                      (deltaMass + deltaLength + deltaGO)), 3)
+    except ZeroDivisionError:
+        return 1
     
 def generateDistanceMatrix(protein_list):
     """
     A function to calculate a distance matrix between proteins.
     """
+    massMin, massMax = getMinMaxMass(protein_list)
+    lengthMin, lengthMax = getMinMaxLength(protein_list)
     distance_matrix = []
     i=0
     for protein in protein_list:
         distance_list = []
         for protein_checked in protein_list:
-            distance_list.append(calcDistance(protein, protein_checked))
-        distance_matrix.append(distance_list)
+            distance_list.append(calcDistance(protein, protein_checked,
+                                              massMin, massMax, lengthMin, lengthMax))
         i+=1
         print i
+        distance_matrix.append(distance_list)
     return distance_matrix
 
-def dummyData(protein_list):
-    dico = {}
-    i = 0
-    for GOlist in protein_list:
-        for GO in GOlist:
-            if not GO.strip(" ") in dico.keys():
-                dico[GO.strip(" ")] = i
-                i+=1
-    for GOlist in protein_list:
-        for i in range(len(GOlist)):
-            GOlist[i] = GOlist[i].strip(" ")
-            GOlist[i] = dico[GOlist[i]]
-    return protein_list
-        
+
+
 if __name__ == '__main__':
     protein_list = []
     protein_list = loadfile(protein_list)
     formatOntoData(protein_list)
+    distance_matrix = generateDistanceMatrix(protein_list[0:10000])
     
-    go_list_mol, entry_list = geneOntoAsList(protein_list)
-    dico = dummyData(go_list_mol)
-    distance_matrix = generateDistanceMatrix(dico)
-    
-    
+    """
+    go_list_mol, entry_list = geneOntoAsList(protein_list[:5])
+
+    distance_matrix = generateDistanceMatrix(go_list_mol)
+    print distance_matrix
+    """
             
     """
     distArray = ssd.squareform(distance_matrix)
