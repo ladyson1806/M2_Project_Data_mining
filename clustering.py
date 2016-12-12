@@ -10,11 +10,13 @@ import numpy as np
 import sys
 import math
 from sklearn.cluster import DBSCAN
+import DBSCAN_multiplex as DB
 from sklearn import metrics
 from sklearn.datasets.samples_generator import make_blobs
 from sklearn.preprocessing import StandardScaler
 import sklearn
 import pprint
+import tables
 
 def loadfile(protein_list):
     """
@@ -162,13 +164,15 @@ def calcDistance(protein1, protein2, massMin, massMax, lengthMin, lengthMax):
     except ZeroDivisionError:
         return 1
     
-def generateDistanceMatrix(protein_list):
+def generateDistanceMatrix(hdf5_file, protein_list):
     """
     A function to calculate a distance matrix between proteins.
     """
+    data_storage = hdf5_file.create_vlarray(hdf5_file.root, 'data_storage',
+                                            tables.FloatAtom(), 'distance_matrix')
     massMin, massMax = getMinMaxMass(protein_list)
     lengthMin, lengthMax = getMinMaxLength(protein_list)
-    distance_matrix = []
+    i=0
     for protein in protein_list:
         distance_list = []
         for protein_checked in protein_list:
@@ -177,32 +181,34 @@ def generateDistanceMatrix(protein_list):
             else:
                 distance_list.append(calcDistance(protein, protein_checked,
                                                   massMin, massMax, lengthMin, lengthMax))
-        distance_matrix.append(distance_list)
-    return distance_matrix
+        i+=1
+        print i
+        data_storage.append(distance_list)
+    return data_storage
 
 
 if __name__ == '__main__':
     protein_list = []
     protein_list = loadfile(protein_list)
     protein_list = formatData(protein_list)
-    distance_matrix = generateDistanceMatrix(protein_list)
     
-    """   
-    db = DBSCAN(eps=0.5, min_samples=5, metric="precomputed").fit(distance_matrix)
+    hdf5_path = "distance_matrix.hdf5"
+    hdf5_file = tables.open_file(hdf5_path, mode='w')
     
-    labels = db.labels_
+    distance_matrix = generateDistanceMatrix(hdf5_file, protein_list[:1000])
+
+    db = DB.DBSCAN(distance_matrix, 10, metric="precomputed")
+    
+    labels = db[1][0]
     n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-
-
     cluster = {}
-    for nb in labels:
-        if not nb in cluster.keys(): 
-            cluster[nb] = []
-    for i in range(len(labels)):
-        nb = labels[i]
-        cluster[nb].append(protein_list[i][0])
-    print distance_matrix[0]
-    """
+    for label in labels:
+        if not cluster.has_key(label):
+            cluster[label] = ""
+    print cluster.keys()
+    hdf5_file.close()
+    
+    
     
         
     
